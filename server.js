@@ -29,32 +29,23 @@ if (fs.existsSync(indexPath)) {
 // Раздача статических файлов
 app.use(express.static(publicPath));
 
-// Главная страница — пробуем разные способы
+// Главная страница — простой способ
 app.get('/', (req, res) => {
-    console.log('📥 Запрос на главную страницу');
+    console.log('📥 Запрос на /');
     
-    // Способ 1: Через sendFile с опциями
-    res.sendFile(indexPath, {
-        root: __dirname,
-        headers: {
-            'Content-Type': 'text/html; charset=utf-8'
-        }
-    }, (err) => {
+    // Пробуем отправить файл
+    res.sendFile('/app/public/index.html', (err) => {
         if (err) {
-            console.error('❌ Ошибка sendFile:', err);
-            
-            // Способ 2: Если не получилось, пробуем readFile
-            fs.readFile(indexPath, 'utf8', (readErr, data) => {
-                if (readErr) {
-                    console.error('❌ Ошибка readFile:', readErr);
-                    res.status(500).send('Ошибка загрузки страницы');
-                } else {
-                    console.log('✅ Отправлено через readFile');
-                    res.send(data);
-                }
-            });
-        } else {
-            console.log('✅ Отправлено через sendFile');
+            console.error('❌ sendFile ошибка:', err.message);
+            // Если не получилось — пробуем прочитать и отправить содержимое
+            try {
+                const content = require('fs').readFileSync('/app/public/index.html', 'utf8');
+                console.log('✅ Отправлено через readFileSync, размер:', content.length, 'байт');
+                res.send(content);
+            } catch (readErr) {
+                console.error('❌ readFile ошибка:', readErr.message);
+                res.send('<h1>Ошибка загрузки страницы</h1><p>Файл не читается</p>');
+            }
         }
     });
 });
