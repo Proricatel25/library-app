@@ -29,17 +29,32 @@ if (fs.existsSync(indexPath)) {
 // Раздача статических файлов
 app.use(express.static(publicPath));
 
-// Главная страница
+// Главная страница — пробуем разные способы
 app.get('/', (req, res) => {
     console.log('📥 Запрос на главную страницу');
-    console.log('📄 Отправляю файл:', indexPath);
     
-    res.sendFile(indexPath, (err) => {
+    // Способ 1: Через sendFile с опциями
+    res.sendFile(indexPath, {
+        root: __dirname,
+        headers: {
+            'Content-Type': 'text/html; charset=utf-8'
+        }
+    }, (err) => {
         if (err) {
-            console.error('❌ Ошибка отправки файла:', err);
-            res.status(500).send('Ошибка загрузки страницы');
+            console.error('❌ Ошибка sendFile:', err);
+            
+            // Способ 2: Если не получилось, пробуем readFile
+            fs.readFile(indexPath, 'utf8', (readErr, data) => {
+                if (readErr) {
+                    console.error('❌ Ошибка readFile:', readErr);
+                    res.status(500).send('Ошибка загрузки страницы');
+                } else {
+                    console.log('✅ Отправлено через readFile');
+                    res.send(data);
+                }
+            });
         } else {
-            console.log('✅ Файл успешно отправлен');
+            console.log('✅ Отправлено через sendFile');
         }
     });
 });
