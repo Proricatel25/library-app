@@ -33,7 +33,15 @@ app.use(express.static(publicPath));
 app.get('/', (req, res) => {
     console.log('📥 Запрос на главную страницу');
     console.log('📄 Отправляю файл:', indexPath);
-    res.sendFile(indexPath);
+    
+    res.sendFile(indexPath, (err) => {
+        if (err) {
+            console.error('❌ Ошибка отправки файла:', err);
+            res.status(500).send('Ошибка загрузки страницы');
+        } else {
+            console.log('✅ Файл успешно отправлен');
+        }
+    });
 });
 
 // ===== ПОДКЛЮЧЕНИЕ К БД =====
