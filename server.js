@@ -9,12 +9,14 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Раздача статических файлов
+// Раздача статических файлов - ПРОВЕРЬ ПУТЬ
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Главная страница
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    console.log('📄 Ищу файл:', indexPath); // Для отладки
+    res.sendFile(indexPath);
 });
 
 // ===== ПОДКЛЮЧЕНИЕ К БД (исправлено для Amvera/Supabase) =====
