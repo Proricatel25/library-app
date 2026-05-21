@@ -7,63 +7,86 @@ const fs = require('fs');
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors());
 
-// ===== ОТЛАДКА: Проверка пути к файлам =====
-const publicPath = path.join(__dirname, 'public');
-const indexPath = path.join(__dirname, 'public', 'index.html');
+// ===== НАСТРОЙКА ПУТЕЙ ДЛЯ AMVERA =====
+// На Amvera приложение работает из папки /app
+const APP_DIR = process.cwd();
+const PUBLIC_DIR = path.join(APP_DIR, 'public');
+const INDEX_PATH = path.join(PUBLIC_DIR, 'index.html');
 
-console.log('📁 __dirname:', __dirname);
-console.log('📁 Public path:', publicPath);
-console.log('📄 Index path:', indexPath);
+console.log('📁 APP_DIR:', APP_DIR);
+console.log('📁 PUBLIC_DIR:', PUBLIC_DIR);
+console.log('📄 INDEX_PATH:', INDEX_PATH);
 
-// Проверяем существование файла
-if (fs.existsSync(indexPath)) {
-    console.log('✅ Файл index.html НАЙДЕН!');
+// Проверка существования файла при старте
+if (fs.existsSync(INDEX_PATH)) {
+    const stats = fs.statSync(INDEX_PATH);
+    console.log(`✅ index.html найден! Размер: ${Math.round(stats.size / 1024)} KB`);
 } else {
-    console.error('❌ Файл index.html НЕ найден!');
-    console.error('💡 Проверь, что index.html находится в папке public');
+    console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: index.html не найден по пути:', INDEX_PATH);
+    console.error('💡 Проверь, что папка public с index.html загружена в репозиторий');
 }
 
-// Раздача статических файлов
-app.use(express.static(publicPath));
-
-// Главная страница — простой способ
-app.get('/', (req, res) => {
-    console.log('📥 Запрос на /');
-    
-    // Пробуем отправить файл
-    res.sendFile('/app/public/index.html', (err) => {
-        if (err) {
-            console.error('❌ sendFile ошибка:', err.message);
-            // Если не получилось — пробуем прочитать и отправить содержимое
-            try {
-                const content = require('fs').readFileSync('/app/public/index.html', 'utf8');
-                console.log('✅ Отправлено через readFileSync, размер:', content.length, 'байт');
-                res.send(content);
-            } catch (readErr) {
-                console.error('❌ readFile ошибка:', readErr.message);
-                res.send('<h1>Ошибка загрузки страницы</h1><p>Файл не читается</p>');
-            }
+// ===== РАЗДАЧА СТАТИЧЕСКИХ ФАЙЛОВ =====
+app.use(express.static(PUBLIC_DIR, {
+    index: false, // Отключаем автоматическую раздачу index, чтобы контролировать через app.get
+    setHeaders: (res, filepath) => {
+        if (filepath.endsWith('.html')) {
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
         }
+    }
+}));
+
+// ===== ГЛАВНАЯ СТРАНИЦА — ПРЯМАЯ ОТПРАВКА =====
+app.get('/', (req, res) => {
+    console.log('📥 GET / — запрос главной страницы');
+    
+    // Пробуем прочитать и отправить файл напрямую
+    fs.readFile(INDEX_PATH, 'utf8', (err, data) => {
+        if (err) {
+            console.error('❌ Ошибка чтения index.html:', err.message);
+            return res.status(500).send(`
+                <h1>❌ Ошибка сервера</h1>
+                <p>Не удалось загрузить главную страницу.</p>
+                <p><strong>Детали:</strong> ${err.message}</p>
+                <p><strong>Путь к файлу:</strong> ${INDEX_PATH}</p>
+            `);
+        }
+        
+        console.log(`✅ Отправлено ${Math.round(data.length / 1024)} KB HTML`);
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(data);
     });
 });
 
-// ===== ПОДКЛЮЧЕНИЕ К БД =====
+// ===== ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ (Supabase) =====
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  },
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  // Fallback для локальной разработки
   user: process.env.PGUSER || "postgres",
-  host: process.env.PGHOST || "localhost",
+  host: process.env.PGHOST || "localhost", 
   database: process.env.PGDATABASE || "library",
   password: process.env.PGPASSWORD || "1234",
-  port: process.env.PGPORT || 5432,
+  port: parseInt(process.env.PGPORT) || 5432,
 });
 
-// НАСТРОЙКИ ПОЧТЫ
+// Проверка подключения к БД
+pool.connect((err, client, release) => {
+  if (err) {
+    console.error('❌ Ошибка подключения к БД:', err.message);
+    console.error('💡 Проверь переменную DATABASE_URL в Amvera');
+  } else {
+    console.log('✅ Подключение к базе данных установлено');
+    console.log('🌍 Environment:', process.env.NODE_ENV || 'development');
+    release();
+  }
+});
+
+// ===== НАСТРОЙКИ ПОЧТЫ =====
 const EMAIL_CONFIG = {
   service: 'gmail',
   host: 'smtp.gmail.com',
@@ -73,9 +96,7 @@ const EMAIL_CONFIG = {
     user: process.env.EMAIL_USER || 'proricatelmiphifig@gmail.com',
     pass: process.env.EMAIL_PASS || 'nqbvdewukhqwrkpa'
   },
-  tls: {
-    rejectUnauthorized: false
-  }
+  tls: { rejectUnauthorized: false }
 };
 
 const transporter = nodemailer.createTransport(EMAIL_CONFIG);
@@ -88,21 +109,10 @@ transporter.verify((error, success) => {
   }
 });
 
+// ===== КОНСТАНТЫ =====
 const INITIAL_BOOK_COUNT = 15;
 
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('❌ Ошибка подключения к БД:', err.message);
-    console.error('💡 Проверьте переменную DATABASE_URL в Amvera');
-  } else {
-    console.log('✅ Подключение к базе данных установлено');
-    console.log('🌍 Environment:', process.env.NODE_ENV || 'development');
-    release();
-  }
-});
-
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
-
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -111,17 +121,14 @@ function formatDate(dateStr) {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   return d.toLocaleDateString('ru-RU', { 
-    day: '2-digit', 
-    month: '2-digit', 
-    year: 'numeric' 
+    day: '2-digit', month: '2-digit', year: 'numeric' 
   });
 }
 
 async function getAvailableCount(bookId) {
   try {
     const result = await pool.query(
-      `SELECT COUNT(*) FROM book_distribution 
-       WHERE book_id = $1 AND date_return IS NULL`,
+      `SELECT COUNT(*) FROM book_distribution WHERE book_id = $1 AND date_return IS NULL`,
       [bookId]
     );
     return INITIAL_BOOK_COUNT - parseInt(result.rows[0].count);
@@ -131,11 +138,11 @@ async function getAvailableCount(bookId) {
   }
 }
 
-// ===== РЕГИСТРАЦИЯ С ПОДТВЕРЖДЕНИЕМ =====
+// ===== API: РЕГИСТРАЦИЯ С ПОДТВЕРЖДЕНИЕМ =====
 
 app.post("/register/send-code", async (req, res) => {
   const { login, password, email } = req.body;
-  console.log('📧 Запрос кода подтверждения:', email);
+  console.log('📧 Запрос кода:', email);
 
   try {
     const existing = await pool.query(
@@ -152,8 +159,7 @@ app.post("/register/send-code", async (req, res) => {
 
     const userResult = await pool.query(
       `INSERT INTO reader (login, password, email, name, surname, phonenumber, is_active) 
-       VALUES ($1, $2, $3, NULL, NULL, NULL, false)
-       RETURNING id`,
+       VALUES ($1, $2, $3, NULL, NULL, NULL, false) RETURNING id`,
       [login, password, email]
     );
     
@@ -172,14 +178,14 @@ app.post("/register/send-code", async (req, res) => {
         subject: '📚 Подтверждение регистрации',
         text: `Ваш код подтверждения: ${code}\nКод действителен 10 минут.`,
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #667eea;">📚 Библиотека</h2>
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+            <h2 style="color:#667eea;">📚 Библиотека</h2>
             <p>Здравствуйте!</p>
             <p>Для завершения регистрации введите код:</p>
-            <div style="background: #f0f0f0; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
-              <h1 style="color: #667eea; letter-spacing: 10px; margin: 0;">${code}</h1>
+            <div style="background:#f0f0f0;padding:20px;text-align:center;border-radius:8px;margin:20px 0;">
+              <h1 style="color:#667eea;letter-spacing:10px;margin:0;">${code}</h1>
             </div>
-            <p style="color: #666; font-size: 14px;">Код действителен 10 минут.</p>
+            <p style="color:#666;font-size:14px;">Код действителен 10 минут.</p>
           </div>
         `
       });
@@ -203,8 +209,7 @@ app.post("/register/verify", async (req, res) => {
   try {
     const codeResult = await pool.query(
       `SELECT * FROM verification_codes 
-       WHERE user_id = $1 AND code = $2 AND used = false 
-       AND expires_at > NOW()`,
+       WHERE user_id = $1 AND code = $2 AND used = false AND expires_at > NOW()`,
       [user_id, code]
     );
 
@@ -214,15 +219,9 @@ app.post("/register/verify", async (req, res) => {
         [user_id, code]
       );
       
-      if (checkResult.rows.length === 0) {
-        return res.status(400).json({ message: "Неверный код" });
-      }
-      if (checkResult.rows[0].used) {
-        return res.status(400).json({ message: "Код уже использован" });
-      }
-      if (new Date(checkResult.rows[0].expires_at) < new Date()) {
-        return res.status(400).json({ message: "Код истёк" });
-      }
+      if (checkResult.rows.length === 0) return res.status(400).json({ message: "Неверный код" });
+      if (checkResult.rows[0].used) return res.status(400).json({ message: "Код уже использован" });
+      if (new Date(checkResult.rows[0].expires_at) < new Date()) return res.status(400).json({ message: "Код истёк" });
       return res.status(400).json({ message: "Неверный код" });
     }
 
@@ -253,12 +252,8 @@ app.post("/register/resend-code", async (req, res) => {
       [user_id]
     );
     
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ message: "Пользователь не найден" });
-    }
-    if (userResult.rows[0].is_active) {
-      return res.status(400).json({ message: "Аккаунт уже активирован" });
-    }
+    if (userResult.rows.length === 0) return res.status(404).json({ message: "Пользователь не найден" });
+    if (userResult.rows[0].is_active) return res.status(400).json({ message: "Аккаунт уже активирован" });
 
     const email = userResult.rows[0].email;
     const code = generateCode();
@@ -280,11 +275,11 @@ app.post("/register/resend-code", async (req, res) => {
         subject: '📚 Новый код подтверждения',
         text: `Ваш новый код: ${code}\nДействителен 10 минут.`,
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px;">
-            <h2 style="color: #667eea;">📚 Библиотека</h2>
+          <div style="font-family:Arial,sans-serif;max-width:600px;">
+            <h2 style="color:#667eea;">📚 Библиотека</h2>
             <p>Ваш новый код подтверждения:</p>
-            <div style="background: #f0f0f0; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
-              <h1 style="color: #667eea; letter-spacing: 10px; margin: 0;">${code}</h1>
+            <div style="background:#f0f0f0;padding:20px;text-align:center;border-radius:8px;margin:20px 0;">
+              <h1 style="color:#667eea;letter-spacing:10px;margin:0;">${code}</h1>
             </div>
           </div>
         `
@@ -302,7 +297,7 @@ app.post("/register/resend-code", async (req, res) => {
   }
 });
 
-// ===== ВХОД =====
+// ===== API: ВХОД =====
 app.post("/login", async (req, res) => {
   const { login, password } = req.body;
   console.log('🔐 Вход:', login);
@@ -332,7 +327,7 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// ===== КНИГИ (с рейтингом) =====
+// ===== API: КНИГИ =====
 app.get("/books", async (req, res) => {
   try {
     const booksResult = await pool.query(`
@@ -363,15 +358,11 @@ app.get("/books", async (req, res) => {
   }
 });
 
-// ===== ПОЛУЧИТЬ ОДНУ КНИГУ ПО ID =====
 app.get("/books/:id", async (req, res) => {
   const bookId = parseInt(req.params.id);
   
   try {
-    const result = await pool.query(
-      `SELECT * FROM books WHERE id = $1`,
-      [bookId]
-    );
+    const result = await pool.query(`SELECT * FROM books WHERE id = $1`, [bookId]);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ message: "Книга не найдена" });
@@ -389,7 +380,7 @@ app.get("/books/:id", async (req, res) => {
   }
 });
 
-// ===== ВЗЯТЬ КНИГУ =====
+// ===== API: ВЗЯТЬ / ВЕРНУТЬ КНИГУ =====
 app.post("/borrow", async (req, res) => {
   const { user_id, book_id } = req.body;
   console.log(`📥 Выдача: book_id=${book_id}, user_id=${user_id}`);
@@ -409,8 +400,7 @@ app.post("/borrow", async (req, res) => {
     const reader = readerResult.rows[0];
 
     const existingBorrow = await pool.query(
-      `SELECT id FROM book_distribution 
-       WHERE reader_id = $1 AND book_id = $2 AND date_return IS NULL`,
+      `SELECT id FROM book_distribution WHERE reader_id = $1 AND book_id = $2 AND date_return IS NULL`,
       [user_id, book_id]
     );
     
@@ -419,8 +409,7 @@ app.post("/borrow", async (req, res) => {
     }
 
     const userBorrowCount = await pool.query(
-      `SELECT COUNT(*) as count FROM book_distribution 
-       WHERE reader_id = $1 AND date_return IS NULL`,
+      `SELECT COUNT(*) as count FROM book_distribution WHERE reader_id = $1 AND date_return IS NULL`,
       [user_id]
     );
     
@@ -428,9 +417,7 @@ app.post("/borrow", async (req, res) => {
     const MAX_BOOKS_PER_USER = 20;
     
     if (currentCount >= MAX_BOOKS_PER_USER) {
-      return res.status(400).json({ 
-        message: `📚 Достигнут лимит книг (${MAX_BOOKS_PER_USER}). Верните хотя бы одну книгу, чтобы взять новую.` 
-      });
+      return res.status(400).json({ message: `📚 Достигнут лимит книг (${MAX_BOOKS_PER_USER}). Верните хотя бы одну книгу, чтобы взять новую.` });
     }
 
     const availableCount = await getAvailableCount(book_id);
@@ -460,14 +447,11 @@ app.post("/borrow", async (req, res) => {
   }
 });
 
-// ===== ВЕРНУТЬ КНИГУ =====
 app.post("/return", async (req, res) => {
   const { distribution_id } = req.body;
   
   try {
-    if (!distribution_id) {
-      return res.status(400).json({ message: "Не указан ID выдачи" });
-    }
+    if (!distribution_id) return res.status(400).json({ message: "Не указан ID выдачи" });
 
     const distributionResult = await pool.query(
       `SELECT book_id FROM book_distribution WHERE id = $1 AND date_return IS NULL`,
@@ -495,14 +479,12 @@ app.post("/return", async (req, res) => {
   }
 });
 
-// ===== МОИ КНИГИ =====
+// ===== API: МОИ КНИГИ / ПРОФИЛЬ =====
 app.get("/mybooks/:id", async (req, res) => {
   const userId = parseInt(req.params.id);
   
   try {
-    if (!userId) {
-      return res.status(400).json({ message: "Не указан ID пользователя" });
-    }
+    if (!userId) return res.status(400).json({ message: "Не указан ID пользователя" });
 
     const userCheck = await pool.query("SELECT id FROM reader WHERE id=$1", [userId]);
     if (userCheck.rows.length === 0) return res.status(404).json({ message: "Пользователь не найден" });
@@ -525,15 +507,12 @@ app.get("/mybooks/:id", async (req, res) => {
   }
 });
 
-// ===== ПРОФИЛЬ =====
 app.put("/profile/:id", async (req, res) => {
   const userId = parseInt(req.params.id);
   const { email, name, surname, phonenumber } = req.body;
   
   try {
-    if (!userId) {
-      return res.status(400).json({ message: "Не указан ID пользователя" });
-    }
+    if (!userId) return res.status(400).json({ message: "Не указан ID пользователя" });
 
     if (email) {
       const existing = await pool.query("SELECT id FROM reader WHERE email = $1 AND id != $2", [email, userId]);
@@ -554,7 +533,7 @@ app.put("/profile/:id", async (req, res) => {
   }
 });
 
-// ===== DEBUG =====
+// ===== API: DEBUG =====
 app.get("/debug/db", async (req, res) => {
   try {
     const books = await pool.query("SELECT COUNT(*) FROM books");
@@ -573,11 +552,9 @@ app.get("/debug/db", async (req, res) => {
   }
 });
 
-// ===== 🔥 БРОНИРОВАНИЕ КНИГ =====
-
+// ===== API: БРОНИРОВАНИЕ =====
 app.post("/reserve", async (req, res) => {
   const { user_id, book_id, reservation_date } = req.body;
-  
   console.log(`📅 Бронь: user_id=${user_id}, book_id=${book_id}, date=${reservation_date}`);
 
   try {
@@ -595,8 +572,7 @@ app.post("/reserve", async (req, res) => {
     const reader = readerResult.rows[0];
 
     const existingReservation = await pool.query(
-      `SELECT id FROM book_reservations 
-       WHERE user_id = $1 AND book_id = $2 AND status = 'active'`,
+      `SELECT id FROM book_reservations WHERE user_id = $1 AND book_id = $2 AND status = 'active'`,
       [user_id, book_id]
     );
     
@@ -605,8 +581,7 @@ app.post("/reserve", async (req, res) => {
     }
 
     const userReservationCount = await pool.query(
-      `SELECT COUNT(*) as count FROM book_reservations 
-       WHERE user_id = $1 AND status = 'active'`,
+      `SELECT COUNT(*) as count FROM book_reservations WHERE user_id = $1 AND status = 'active'`,
       [user_id]
     );
     
@@ -614,9 +589,7 @@ app.post("/reserve", async (req, res) => {
     const MAX_RESERVATIONS = 5;
     
     if (currentCount >= MAX_RESERVATIONS) {
-      return res.status(400).json({ 
-        message: `📚 Достигнут лимит бронирований (${MAX_RESERVATIONS}). Отмените старые брони, чтобы создать новые.` 
-      });
+      return res.status(400).json({ message: `📚 Достигнут лимит бронирований (${MAX_RESERVATIONS}). Отмените старые брони, чтобы создать новые.` });
     }
 
     const reservationDate = new Date(reservation_date);
@@ -646,7 +619,6 @@ app.post("/reserve", async (req, res) => {
   }
 });
 
-// ===== МОИ БРОНИРОВАНИЯ (с изображениями и рейтингом) =====
 app.get("/my-reservations/:id", async (req, res) => {
   const userId = parseInt(req.params.id);
   
@@ -684,9 +656,7 @@ app.post("/cancel-reservation", async (req, res) => {
   console.log(`❌ Отмена брони: reservation_id=${reservation_id}`);
 
   try {
-    if (!reservation_id) {
-      return res.status(400).json({ message: "Не указан ID брони" });
-    }
+    if (!reservation_id) return res.status(400).json({ message: "Не указан ID брони" });
 
     const result = await pool.query(
       `UPDATE book_reservations SET status = 'cancelled' WHERE id = $1 AND status = 'active'`,
@@ -714,8 +684,7 @@ app.post("/take-reserved-book", async (req, res) => {
     }
 
     const reservationResult = await pool.query(
-      `SELECT * FROM book_reservations 
-       WHERE id = $1 AND user_id = $2 AND status = 'active'`,
+      `SELECT * FROM book_reservations WHERE id = $1 AND user_id = $2 AND status = 'active'`,
       [reservation_id, user_id]
     );
 
@@ -724,7 +693,6 @@ app.post("/take-reserved-book", async (req, res) => {
     }
 
     const reservation = reservationResult.rows[0];
-    
     const now = new Date();
     const expiresAt = new Date(reservation.expires_at);
     
@@ -733,7 +701,6 @@ app.post("/take-reserved-book", async (req, res) => {
     }
 
     const availableCount = await getAvailableCount(book_id);
-    
     if (availableCount <= 0) {
       return res.status(400).json({ message: "❌ Книга временно отсутствует" });
     }
@@ -741,12 +708,8 @@ app.post("/take-reserved-book", async (req, res) => {
     const bookResult = await pool.query("SELECT title FROM books WHERE id=$1", [book_id]);
     const readerResult = await pool.query("SELECT name, surname, login FROM reader WHERE id=$1", [user_id]);
     
-    if (bookResult.rows.length === 0) {
-      return res.status(404).json({ message: "Книга не найдена" });
-    }
-    if (readerResult.rows.length === 0) {
-      return res.status(404).json({ message: "Читатель не найден" });
-    }
+    if (bookResult.rows.length === 0) return res.status(404).json({ message: "Книга не найдена" });
+    if (readerResult.rows.length === 0) return res.status(404).json({ message: "Читатель не найден" });
     
     const book = bookResult.rows[0];
     const reader = readerResult.rows[0];
@@ -758,11 +721,7 @@ app.post("/take-reserved-book", async (req, res) => {
       [book_id, book.title, user_id, readerName]
     );
 
-    await pool.query(
-      `UPDATE book_reservations SET status = 'completed' WHERE id = $1`,
-      [reservation_id]
-    );
-
+    await pool.query(`UPDATE book_reservations SET status = 'completed' WHERE id = $1`, [reservation_id]);
     await pool.query(
       `UPDATE books SET "Количество экземпляров" = $1, available = $2 WHERE id=$3`, 
       [availableCount - 1, availableCount - 1 > 0, book_id]
@@ -777,19 +736,15 @@ app.post("/take-reserved-book", async (req, res) => {
   }
 });
 
-// ===== ОТЗЫВЫ И ОЦЕНКИ КНИГ =====
-
+// ===== API: ОТЗЫВЫ =====
 app.get("/books/:id/reviews", async (req, res) => {
   const bookId = parseInt(req.params.id);
   
   try {
-    if (!bookId) {
-      return res.status(400).json({ message: "Не указан ID книги" });
-    }
+    if (!bookId) return res.status(400).json({ message: "Не указан ID книги" });
 
     const result = await pool.query(
-      `SELECT br.id, br.rating, br.comment, br.created_at,
-              r.login, r.name, r.surname
+      `SELECT br.id, br.rating, br.comment, br.created_at, r.login, r.name, r.surname
        FROM book_reviews br
        JOIN reader r ON br.user_id = r.id
        WHERE br.book_id = $1
@@ -811,7 +766,6 @@ app.post("/books/:id/reviews", async (req, res) => {
     if (!bookId || !user_id || !rating) {
       return res.status(400).json({ message: "Не все обязательные поля заполнены" });
     }
-
     if (rating < 1 || rating > 5) {
       return res.status(400).json({ message: "Оценка должна быть от 1 до 5" });
     }
@@ -831,8 +785,7 @@ app.post("/books/:id/reviews", async (req, res) => {
   }
 });
 
-// ===== ПЕРСОНАЛЬНЫЕ СПИСКИ КНИГ =====
-
+// ===== API: ПЕРСОНАЛЬНЫЕ СПИСКИ =====
 app.post("/books/:id/status", async (req, res) => {
   const bookId = parseInt(req.params.id);
   const { user_id, status } = req.body;
@@ -841,7 +794,6 @@ app.post("/books/:id/status", async (req, res) => {
     if (!bookId || !user_id || !status) {
       return res.status(400).json({ message: "Не все обязательные поля заполнены" });
     }
-
     if (!['read', 'plan_to_read', 'favorites'].includes(status)) {
       return res.status(400).json({ message: "Неверный статус" });
     }
@@ -871,9 +823,7 @@ app.get("/my-book-statuses/:id", async (req, res) => {
   const userId = parseInt(req.params.id);
   
   try {
-    if (!userId) {
-      return res.status(400).json({ message: "Не указан ID пользователя" });
-    }
+    if (!userId) return res.status(400).json({ message: "Не указан ID пользователя" });
 
     const result = await pool.query(
       `SELECT book_id, status FROM user_book_statuses WHERE user_id = $1`,
@@ -898,9 +848,7 @@ app.get("/my-list-books", async (req, res) => {
     const status = req.query.status;
 
     try {
-        if (!userId) {
-            return res.status(400).json({ message: "Не указан ID пользователя" });
-        }
+        if (!userId) return res.status(400).json({ message: "Не указан ID пользователя" });
 
         let query = `
             SELECT b.*, s.status, s.created_at as added_at
@@ -925,7 +873,6 @@ app.get("/my-list-books", async (req, res) => {
     }
 });
 
-// ===== МОЙ СПИСОК (прочитал/планирую/избранное) =====
 app.get("/my-list/:id", async (req, res) => {
   const userId = parseInt(req.params.id);
   const { status } = req.query;
@@ -934,8 +881,7 @@ app.get("/my-list/:id", async (req, res) => {
     const userCheck = await pool.query("SELECT id FROM reader WHERE id=$1", [userId]);
     if (userCheck.rows.length === 0) return res.status(404).json({ message: "Пользователь не найден" });
     
-    let query;
-    let params;
+    let query, params;
     
     if (status) {
       query = `
@@ -943,8 +889,7 @@ app.get("/my-list/:id", async (req, res) => {
                books.roomnumber, books.shelfnumber, books.image_url, books.description,
                COALESCE(AVG(br.rating), 0) as avg_rating,
                COUNT(br.id) as reviews_count,
-               ubs.status,
-               ubs.created_at as added_at
+               ubs.status, ubs.created_at as added_at
         FROM user_book_statuses ubs
         INNER JOIN books ON ubs.book_id = books.id
         LEFT JOIN book_reviews br ON books.id = br.book_id
@@ -985,6 +930,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server started on port ${PORT}`);
   console.log(`🌐 http://localhost:${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📁 Working directory: ${process.cwd()}`);
 });
 
 process.on('unhandledRejection', (reason) => {
