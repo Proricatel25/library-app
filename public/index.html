@@ -1033,34 +1033,38 @@
             </div>
 
             <div id="profileEditPage" class="edit-profile-form">
-                <div class="form-group">
-                    <label>Email:</label>
-                    <input type="email" id="editProfileEmail" readonly>
-                </div>
-                <div class="form-group">
-                    <label>Имя (необязательно):</label>
-                    <input type="text" id="editProfileName">
-                </div>
-                <div class="form-group">
-                    <label>Фамилия (необязательно):</label>
-                    <input type="text" id="editProfileSurname">
-                </div>
-                <div class="form-group">
-                    <label>Телефон (необязательно):</label>
-                    <input type="tel" 
-                           id="editProfilePhone" 
-                           placeholder="+7 (___) ___-__-__"
-                           inputmode="tel"
-                           maxlength="18"
-                           oninput="formatPhoneNumber(this)"
-                           onkeydown="allowOnlyDigits(event)"
-                           class="phone-input">
-                </div>
-                <div class="profile-actions">
-                    <button class="save-profile-btn" style="display: inline-block;" onclick="saveProfilePage()">💾 Сохранить</button>
-                    <button class="cancel-profile-btn" style="display: inline-block;" onclick="cancelEditProfilePage()">❌ Отмена</button>
-                </div>
-            </div>
+    <div class="form-group">
+        <label>Логин:</label>
+        <input type="text" id="editProfileLogin">
+    </div>
+    <div class="form-group">
+        <label>Пароль:</label>
+        <input type="password" id="editProfilePassword">
+    </div>
+    <div class="form-group">
+        <label>Имя (необязательно):</label>
+        <input type="text" id="editProfileName">
+    </div>
+    <div class="form-group">
+        <label>Фамилия (необязательно):</label>
+        <input type="text" id="editProfileSurname">
+    </div>
+    <div class="form-group">
+        <label>Телефон (необязательно):</label>
+        <input type="tel" 
+               id="editProfilePhone" 
+               placeholder="+7 (___) ___-__-__"
+               inputmode="tel"
+               maxlength="18"
+               oninput="formatPhoneNumber(this)"
+               onkeydown="allowOnlyDigits(event)"
+               class="phone-input">
+    </div>
+    <div class="profile-actions">
+        <button class="save-profile-btn" style="display: inline-block;" onclick="saveProfilePage()">💾 Сохранить</button>
+        <button class="cancel-profile-btn" style="display: inline-block;" onclick="cancelEditProfilePage()">❌ Отмена</button>
+    </div>
+</div>
         </div>
 
         <div id="myBooksPage" class="hidden">
@@ -1172,7 +1176,6 @@
             return 'stock-high';
         }
 
-        // 🔥 НОВАЯ ФУНКЦИЯ: Получение названия статуса
         function getStatusName(status) {
             const names = {
                 'read': '📖 Прочитал',
@@ -1515,21 +1518,22 @@
         }
 
         function loadProfileData() {
-            if (!currentUser) return;
-            
-            document.getElementById('viewProfileEmail').textContent = currentUser.email || '—';
-            document.getElementById('viewProfileName').textContent = currentUser.name || 'Не указано';
-            document.getElementById('viewProfileSurname').textContent = currentUser.surname || 'Не указано';
-            document.getElementById('viewProfilePhone').textContent = currentUser.phonenumber || 'Не указан';
-            
-            document.getElementById('editProfileEmail').value = currentUser.email || '';
-            document.getElementById('editProfileName').value = currentUser.name || '';
-            document.getElementById('editProfileSurname').value = currentUser.surname || '';
-            document.getElementById('editProfilePhone').value = formatPhoneForDisplay(currentUser.phonenumber || '');
-            
-            document.getElementById('profileViewPage').style.display = 'block';
-            document.getElementById('profileEditPage').classList.remove('active');
-        }
+    if (!currentUser) return;
+    
+    document.getElementById('viewProfileEmail').textContent = currentUser.email || '—';
+    document.getElementById('viewProfileName').textContent = currentUser.name || 'Не указано';
+    document.getElementById('viewProfileSurname').textContent = currentUser.surname || 'Не указано';
+    document.getElementById('viewProfilePhone').textContent = currentUser.phonenumber || 'Не указан';
+    
+    document.getElementById('editProfileLogin').value = currentUser.login || '';
+    document.getElementById('editProfilePassword').value = ''; // Пароль не показываем в целях безопасности
+    document.getElementById('editProfileName').value = currentUser.name || '';
+    document.getElementById('editProfileSurname').value = currentUser.surname || '';
+    document.getElementById('editProfilePhone').value = formatPhoneForDisplay(currentUser.phonenumber || '');
+    
+    document.getElementById('profileViewPage').style.display = 'block';
+    document.getElementById('profileEditPage').classList.remove('active');
+}
 
         function editProfilePage() {
             document.getElementById('profileViewPage').style.display = 'none';
@@ -1542,50 +1546,57 @@
             loadProfileData();
         }
 
-        async function saveProfilePage() {
-            const phoneInput = document.getElementById('editProfilePhone');
-            const rawPhone = phoneInput.value.trim();
-            
-            let validPhone = null;
-            if (rawPhone) {
-                validPhone = validatePhoneNumber(rawPhone);
-                if (!validPhone) {
-                    showMessage('❌ Введите корректный номер: +7 (___) ___-__-__', true);
-                    phoneInput.classList.add('phone-invalid');
-                    phoneInput.focus();
-                    return;
-                }
-            }
-            
-            const data = {
-                email: document.getElementById('editProfileEmail').value.trim(),
-                name: document.getElementById('editProfileName').value.trim(),
-                surname: document.getElementById('editProfileSurname').value.trim(),
-                phonenumber: rawPhone
-            };
-
-            try {
-                const response = await fetch(`${API_URL}/profile/${currentUser.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-
-                if (response.ok) {
-                    showMessage('✅ Профиль обновлён!', false);
-                    currentUser = { ...currentUser, ...data };
-                    loadProfileData();
-                    document.getElementById('userName').textContent = 
-                        `${data.name || ''} ${data.surname || ''}`.trim() || currentUser.login;
-                } else {
-                    const text = await response.text();
-                    showMessage('❌ ' + text, true);
-                }
-            } catch (error) {
-                showMessage('❌ Ошибка при сохранении: ' + error.message, true);
-                console.error('Save profile error:', error);
-            }
+       async function saveProfilePage() {
+    const phoneInput = document.getElementById('editProfilePhone');
+    const rawPhone = phoneInput.value.trim();
+    const login = document.getElementById('editProfileLogin').value.trim();
+    const password = document.getElementById('editProfilePassword').value.trim();
+    
+    let validPhone = null;
+    if (rawPhone) {
+        validPhone = validatePhoneNumber(rawPhone);
+        if (!validPhone) {
+            showMessage('❌ Введите корректный номер: +7 (___) ___-__-__', true);
+            phoneInput.classList.add('phone-invalid');
+            phoneInput.focus();
+            return;
         }
+    }
+    
+    const data = {
+        login: login || null,
+        password: password || null,
+        name: document.getElementById('editProfileName').value.trim(),
+        surname: document.getElementById('editProfileSurname').value.trim(),
+        phonenumber: rawPhone
+    };
+
+    try {
+        const response = await fetch(`${API_URL}/profile/${currentUser.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            showMessage('✅ Профиль обновлён!', false);
+            if (login) currentUser.login = login;
+            if (data.name) currentUser.name = data.name;
+            if (data.surname) currentUser.surname = data.surname;
+            if (data.phonenumber) currentUser.phonenumber = data.phonenumber;
+            
+            loadProfileData();
+            document.getElementById('userName').textContent = 
+                `${currentUser.name || ''} ${currentUser.surname || ''}`.trim() || currentUser.login;
+        } else {
+            const text = await response.text();
+            showMessage('❌ ' + text, true);
+        }
+    } catch (error) {
+        showMessage('❌ Ошибка при сохранении: ' + error.message, true);
+        console.error('Save profile error:', error);
+    }
+}
 
         function allowOnlyDigits(e) {
             const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'];
@@ -1690,136 +1701,141 @@
         }
 
         function renderBooks(books, isInListPage = false) {
-            const gridId = isInListPage ? 'myListsGrid' : 'booksList';
-            
-            const myReservationsGrid = document.getElementById('myReservationsGrid');
-            const myListsGrid = document.getElementById('myListsGrid');
-            const booksList = document.getElementById('booksList');
-            
-            let booksDiv;
-            if (isInListPage && myReservationsGrid && myReservationsGrid.offsetParent !== null) {
-                booksDiv = myReservationsGrid;
-            } else if (isInListPage && myListsGrid) {
-                booksDiv = myListsGrid;
-            } else {
-                booksDiv = booksList;
-            }
-            
-            if (!booksDiv) {
-                console.error('❌ Не найден контейнер для книг!');
-                return;
-            }
-            
-            if (!books || books.length === 0) {
-                booksDiv.innerHTML = '<p class="empty-state">📭 Книги не найдены</p>';
-                return;
-            }
+    const gridId = isInListPage ? 'myListsGrid' : 'booksList';
+    
+    const myReservationsGrid = document.getElementById('myReservationsGrid');
+    const myListsGrid = document.getElementById('myListsGrid');
+    const booksList = document.getElementById('booksList');
+    
+    let booksDiv;
+    if (isInListPage && myReservationsGrid && myReservationsGrid.offsetParent !== null) {
+        booksDiv = myReservationsGrid;
+    } else if (isInListPage && myListsGrid) {
+        booksDiv = myListsGrid;
+    } else {
+        booksDiv = booksList;
+    }
+    
+    if (!booksDiv) return;
+    
+    if (!books || books.length === 0) {
+        booksDiv.innerHTML = '<p class="empty-state">📭 Книги не найдены</p>';
+        return;
+    }
 
-            const takenBookIds = new Set(myBooksList.map(b => b.id));
-            const takenCount = myBooksList.length;
-            const maxBooksReached = takenCount >= 20;
+    const takenBookIds = new Set(myBooksList.map(b => b.id));
+    const takenCount = myBooksList.length;
+    const maxBooksReached = takenCount >= 20;
 
-            booksDiv.innerHTML = books.map(book => {
-                const stock = book["Количество экземпляров"] || 0;
-                const isAvailable = stock > 0;
-                const stockText = isAvailable ? `📦 В наличии: ${stock}` : '❌ Нет в наличии';
-                
-                const avgRating = parseFloat(book.avg_rating) || 0;
-                const reviewsCount = parseInt(book.reviews_count) || 0;
-                const fullStars = Math.round(avgRating);
-                const starsHtml = avgRating > 0 
-                    ? '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars)
-                    : '☆☆☆☆☆';
+    booksDiv.innerHTML = books.map(book => {
+        const stock = book["Количество экземпляров"] || 0;
+        const isAvailable = stock > 0;
+        const stockText = isAvailable ? `📦 В наличии: ${stock}` : '❌ Нет в наличии';
+        
+        const avgRating = parseFloat(book.avg_rating) || 0;
+        const reviewsCount = parseInt(book.reviews_count) || 0;
+        const fullStars = Math.round(avgRating);
+        const starsHtml = avgRating > 0 
+            ? '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars)
+            : '☆☆☆☆☆';
 
-                const alreadyBorrowed = takenBookIds.has(book.id);
-                
-                const statuses = userBookStatuses[book.id] || [];
-                const currentStatus = statuses.length > 0 ? statuses[0] : null;
-                
-                let borrowBtnDisabled = !isAvailable || alreadyBorrowed || (maxBooksReached && !alreadyBorrowed);
-                let borrowBtnText = '📅 Забронировать';
-                let borrowBtnStyle = '';
-                
-                if (alreadyBorrowed) {
-                    borrowBtnText = '✅ Уже взята';
-                    borrowBtnStyle = 'background: #28a745;';
-                } else if (maxBooksReached) {
-                    borrowBtnText = '⚠️ Лимит 20 книг';
-                    borrowBtnStyle = 'background: #dc3545;';
-                } else if (!isAvailable) {
-                    borrowBtnText = '❌ Нет в наличии';
-                    borrowBtnStyle = 'background: #6c757d;';
-                }
-                
-                const imageUrl = getBookImageUrl(book) || createPlaceholderSVG(book.title);
-                
-                return `
-                <div class="book-card clickable ${!isAvailable ? 'unavailable' : ''}" 
-                     onclick="openBookModal(${book.id})">
-                    
-                    <button class="book-menu-btn" 
-                            style="z-index: 9999;" 
-                            onclick="toggleDropdown(event, ${book.id})">⋮</button>
-                    
-                    <div id="dropdown-${book.id}" 
-                         class="book-dropdown" 
-                         data-id="${book.id}"
-                         style="z-index: 9999;"
-                         onclick="event.stopPropagation()">
-                        <button class="dropdown-item ${currentStatus === 'read' ? 'active-status' : ''}" 
-                                onclick="handleStatusClick(event, ${book.id}, 'read')">
-                            <span>📖</span> Прочитал
-                        </button>
-                        <button class="dropdown-item ${currentStatus === 'plan_to_read' ? 'active-status' : ''}" 
-                                onclick="handleStatusClick(event, ${book.id}, 'plan_to_read')">
-                            <span>📅</span> Планирую
-                        </button>
-                        <button class="dropdown-item ${currentStatus === 'favorites' ? 'active-status' : ''}" 
-                                onclick="handleStatusClick(event, ${book.id}, 'favorites')">
-                            <span>❤️</span> Избранное
-                        </button>
-                        ${currentStatus ? `
-                        <button class="dropdown-item delete-status" 
-                                onclick="handleStatusClick(event, ${book.id}, '${currentStatus}')">
-                            <span>❌</span> Удалить из списка
-                        </button>
-                        ` : ''}
-                    </div>
-
-                    <div class="book-cover">
-                        <img src="${imageUrl}" 
-                             alt="${book.title || 'Обложка'}" 
-                             class="book-cover-img"
-                             onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'><div class=\\'title\\'>${(book.title || 'Книга').substring(0, 15)}</div><div class=\\'icon\\'>📚</div></div>'">
-                    </div>
-                    <div class="book-info">
-                        <h3>${book.title || 'Без названия'}</h3>
-                        <p class="author">✍️ ${book.author || 'Неизвестный автор'}</p>
-                        ${book.yearofrelease ? `<p>📅 Год: ${book.yearofrelease}</p>` : ''}
-                        ${book.roomnumber ? `<p>📍 Зал: ${book.roomnumber}, Стеллаж: ${book.shelfnumber}</p>` : ''}
-                        
-                        <div style="margin: 8px 0; font-size: 13px; color: #555;">
-                            <span style="color: #ffc107; font-size: 16px;">${starsHtml}</span>
-                            <span style="font-weight: 600; margin-left: 5px;">${avgRating > 0 ? avgRating.toFixed(1) : '—'}</span>
-                            <span style="color: #888; margin-left: 5px;">(${reviewsCount} отз.)</span>
-                        </div>
-
-                        <span class="stock ${getStockClass(stock)}">${stockText}</span>
-                        ${alreadyBorrowed ? `<span class="stock stock-high" style="margin-top: 5px; background: #28a745; color: white;">✅ Взята вами</span>` : ''}
-                        ${isInListPage && book.status ? `<span class="stock" style="margin-top: 5px; background: #e7f3ff; color: #0066cc;">📌 ${getStatusName(book.status)}</span>` : ''}
-                    </div>
-                    ${!isInListPage ? `
-                    <button onclick="event.stopPropagation(); ${alreadyBorrowed ? '' : `openDatePicker(${book.id})`}" 
-                            style="margin-top: 12px; ${borrowBtnStyle}" 
-                            ${borrowBtnDisabled ? 'disabled' : ''}
-                            class="${!alreadyBorrowed && !maxBooksReached && isAvailable ? 'reserve-btn' : ''}">
-                        ${borrowBtnText}
-                    </button>
-                    <div class="debug-info">ID: ${book.id} | Экз: ${stock}</div>
-                    ` : ''}
-                </div>`;
-            }).join('');
+        const alreadyBorrowed = takenBookIds.has(book.id);
+        
+        const statuses = userBookStatuses[book.id] || [];
+        const currentStatus = statuses.length > 0 ? statuses[0] : null;
+        
+        let borrowBtnDisabled = !isAvailable || alreadyBorrowed || (maxBooksReached && !alreadyBorrowed);
+        let borrowBtnText = '📅 Забронировать';
+        let borrowBtnStyle = '';
+        
+        if (alreadyBorrowed) {
+            borrowBtnText = '✅ Уже взята';
+            borrowBtnStyle = 'background: #28a745;';
+        } else if (maxBooksReached) {
+            borrowBtnText = '⚠️ Лимит 20 книг';
+            borrowBtnStyle = 'background: #dc3545;';
+        } else if (!isAvailable) {
+            borrowBtnText = '❌ Нет в наличии';
+            borrowBtnStyle = 'background: #6c757d;';
         }
+        
+        const imageUrl = getBookImageUrl(book) || createPlaceholderSVG(book.title);
+        
+        return `
+        <div class="book-card clickable ${!isAvailable ? 'unavailable' : ''}" 
+             onclick="openBookModal(${book.id})">
+            
+            ${!isInListPage ? `
+            <!-- Меню с тремя точками и выпадающий список (только на главной странице) -->
+            <button class="book-menu-btn" 
+                    style="z-index: 9999;" 
+                    onclick="toggleDropdown(event, ${book.id})">⋮</button>
+            
+            <div id="dropdown-${book.id}" 
+                 class="book-dropdown" 
+                 data-id="${book.id}"
+                 style="z-index: 9999;"
+                 onclick="event.stopPropagation()">
+                <button class="dropdown-item ${currentStatus === 'read' ? 'active-status' : ''}" 
+                        onclick="handleStatusClick(event, ${book.id}, 'read')">
+                    <span>📖</span> Прочитал
+                </button>
+                <button class="dropdown-item ${currentStatus === 'plan_to_read' ? 'active-status' : ''}" 
+                        onclick="handleStatusClick(event, ${book.id}, 'plan_to_read')">
+                    <span>📅</span> Планирую
+                </button>
+                <button class="dropdown-item ${currentStatus === 'favorites' ? 'active-status' : ''}" 
+                        onclick="handleStatusClick(event, ${book.id}, 'favorites')">
+                    <span>❤️</span> Избранное
+                </button>
+                ${currentStatus ? `
+                <button class="dropdown-item delete-status" 
+                        onclick="handleStatusClick(event, ${book.id}, '${currentStatus}')">
+                    <span>❌</span> Удалить из списка
+                </button>
+                ` : ''}
+            </div>
+            ` : ''}
+
+            <div class="book-cover">
+                <img src="${imageUrl}" 
+                     alt="${book.title || 'Обложка'}" 
+                     class="book-cover-img"
+                     onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'><div class=\\'title\\'>${(book.title || 'Книга').substring(0, 15)}</div><div class=\\'icon\\'>📚</div></div>'">
+            </div>
+            <div class="book-info">
+                <h3>${book.title || 'Без названия'}</h3>
+                <p class="author">✍️ ${book.author || 'Неизвестный автор'}</p>
+                ${book.yearofrelease ? `<p>📅 Год: ${book.yearofrelease}</p>` : ''}
+                ${book.roomnumber ? `<p>📍 Зал: ${book.roomnumber}, Стеллаж: ${book.shelfnumber}</p>` : ''}
+                
+                <div style="margin: 8px 0; font-size: 13px; color: #555;">
+                    <span style="color: #ffc107; font-size: 16px;">${starsHtml}</span>
+                    <span style="font-weight: 600; margin-left: 5px;">${avgRating > 0 ? avgRating.toFixed(1) : '—'}</span>
+                    <span style="color: #888; margin-left: 5px;">(${reviewsCount} отз.)</span>
+                </div>
+
+                <!-- Бейдж наличия показываем только на главной странице -->
+                ${!isInListPage ? `<span class="stock ${getStockClass(stock)}">${stockText}</span>` : ''}
+                
+                ${alreadyBorrowed ? `<span class="stock stock-high" style="margin-top: 5px; background: #28a745; color: white;">✅ Взята вами</span>` : ''}
+                
+                <!-- Бейдж статуса (Избранное/Прочитал) скрыт на странице "Мой список" -->
+            </div>
+            
+            <!-- Кнопка бронирования скрыта на странице "Мой список" -->
+            ${!isInListPage ? `
+            <button onclick="event.stopPropagation(); ${alreadyBorrowed ? '' : `openDatePicker(${book.id})`}" 
+                    style="margin-top: 12px; ${borrowBtnStyle}" 
+                    ${borrowBtnDisabled ? 'disabled' : ''}
+                    class="${!alreadyBorrowed && !maxBooksReached && isAvailable ? 'reserve-btn' : ''}">
+                ${borrowBtnText}
+            </button>
+            <div class="debug-info">ID: ${book.id} | Экз: ${stock}</div>
+            ` : ''}
+        </div>`;
+    }).join('');
+}
 
         function toggleDropdown(event, bookId) {
             event.stopPropagation();
@@ -1898,34 +1914,36 @@
             }
         }
 
-        async function loadMyListsPage(status) {
-            if (!currentUser) return;
-            
-            const grid = document.getElementById('myListsGrid');
-            grid.innerHTML = '<p class="loading">⏳ Загрузка...</p>';
-            
-            try {
-                const response = await fetch(`${API_URL}/my-list-books?user_id=${currentUser.id}&status=${status}`);
-                const books = await response.json();
-                
-                if (!books || books.length === 0) {
-                    grid.innerHTML = '<p class="empty-state">📭 В этом списке пока нет книг</p>';
-                    return;
-                }
-
-                books.forEach(book => {
-                    book["Количество экземпляров"] = 15; 
-                    book.reviews_count = 0;
-                    book.avg_rating = 0;
-                });
-
-                renderBooks(books, true);
-                
-            } catch (error) {
-                console.error('❌ Load my lists error:', error);
-                grid.innerHTML = '<p class="empty-state">❌ Ошибка загрузки</p>';
-            }
+       async function loadMyListsPage(status) {
+    if (!currentUser) return;
+    
+    const grid = document.getElementById('myListsGrid');
+    grid.innerHTML = '<p class="loading">⏳ Загрузка...</p>';
+    
+    try {
+        const response = await fetch(`${API_URL}/my-list-books?user_id=${currentUser.id}&status=${status}`);
+        const books = await response.json();
+        
+        if (!books || books.length === 0) {
+            grid.innerHTML = '<p class="empty-state">📭 В этом списке пока нет книг</p>';
+            return;
         }
+
+        // 🔥 ИСПРАВЛЕНО: Не перезаписываем рейтинг и отзывы!
+        // Просто добавляем количество экземпляров по умолчанию
+        books.forEach(book => {
+            if (!book["Количество экземпляров"]) {
+                book["Количество экземпляров"] = 15;
+            }
+        });
+
+        renderBooks(books, true);
+        
+    } catch (error) {
+        console.error('❌ Load my lists error:', error);
+        grid.innerHTML = '<p class="empty-state">❌ Ошибка загрузки</p>';
+    }
+}
 
         async function loadMyBooksPage() {
             if (!currentUser) return;
@@ -1967,22 +1985,50 @@
                     return;
                 }
 
-                const booksFromReservations = reservations.map(res => ({
-                    id: res.book_id,
-                    title: (res.title || 'Без названия').toString(),
-                    author: res.author || 'Неизвестный автор',
-                    yearofrelease: null,
-                    roomnumber: null,
-                    shelfnumber: null,
-                    "Количество экземпляров": 15,
-                    reviews_count: 0,
-                    avg_rating: 0,
-                    status: 'reserved',
-                    reservation_date: res.reservation_date,
-                    expires_at: res.expires_at
-                }));
-
-                renderBooks(booksFromReservations, true);
+                grid.innerHTML = reservations.map(res => {
+                    const expiresAt = new Date(res.expires_at);
+                    const isExpired = new Date() > expiresAt;
+                    
+                    const imageUrl = getBookImageUrl(res) || createPlaceholderSVG(res.title);
+                    
+                    const avgRating = parseFloat(res.avg_rating) || 0;
+                    const reviewsCount = parseInt(res.reviews_count) || 0;
+                    const fullStars = Math.round(avgRating);
+                    const starsHtml = avgRating > 0 
+                        ? '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars)
+                        : '☆☆☆☆☆';
+                    
+                    return `
+                    <div class="book-card ${isExpired ? 'unavailable' : ''}">
+                        <div class="book-cover">
+                            <img src="${imageUrl}" 
+                                 alt="${res.title || 'Обложка'}" 
+                                 class="book-cover-img"
+                                 onerror="this.parentElement.innerHTML='<div class=\\'book-cover-placeholder\\'><div class=\\'title\\'>${(res.title || 'Книга').substring(0, 15)}</div><div class=\\'icon\\'>📚</div></div>'">
+                        </div>
+                        <div class="book-info">
+                            <h3>${res.title || 'Без названия'}</h3>
+                            <p class="author">✍️ ${res.author || 'Неизвестный автор'}</p>
+                            
+                            <div style="margin: 8px 0; font-size: 13px; color: #555;">
+                                <span style="color: #ffc107; font-size: 16px;">${starsHtml}</span>
+                                <span style="font-weight: 600; margin-left: 5px;">${avgRating > 0 ? avgRating.toFixed(1) : '—'}</span>
+                                <span style="color: #888; margin-left: 5px;">(${reviewsCount} отз.)</span>
+                            </div>
+                            
+                            <p>📅 Дата получения: <strong>${formatDate(res.reservation_date)}</strong></p>
+                            <p>⏰ Действует до: <strong>${formatDate(res.expires_at)}</strong></p>
+                            ${isExpired ? '<p style="color: #dc3545; font-weight: 600;">⌛ Срок брони истёк</p>' : ''}
+                        </div>
+                        <button onclick="cancelReservation(${res.reservation_id})" 
+                                style="margin-top: 12px; background: #dc3545;">
+                            ❌ Убрать бронь
+                        </button>
+                        <div class="debug-info">
+                            Книга ID: ${res.book_id} | Бронь ID: ${res.reservation_id}
+                        </div>
+                    </div>`;
+                }).join('');
                 
             } catch (error) {
                 console.error('❌ Load my reservations error:', error);

@@ -145,15 +145,28 @@ app.post("/register/send-code", async (req, res) => {
   console.log('📧 Запрос кода:', email);
 
   try {
+    // 1. Проверяем, есть ли уже такой логин или email
     const existing = await pool.query(
-      "SELECT id FROM reader WHERE login = $1 OR email = $2",
+      "SELECT id, is_active FROM reader WHERE login = $1 OR email = $2",
       [login, email]
     );
-    
+
     if (existing.rows.length > 0) {
-      return res.status(400).json({ message: "Такой логин или email уже занят" });
+      // Если хоть один аккаунт уже АКТИВИРОВАН — блокируем
+      const hasActive = existing.rows.some(row => row.is_active === true);
+      if (hasActive) {
+        return res.status(400).json({ message: "Такой логин или email уже зарегистрирован" });
+      }
+
+      // Если аккаунты НЕ активированы (брошенная регистрация) — удаляем их
+      console.log('🧹 Найдена незавершённая регистрация. Очищаем старые данные...');
+      for (const row of existing.rows) {
+        await pool.query("DELETE FROM verification_codes WHERE user_id = $1", [row.id]);
+        await pool.query("DELETE FROM reader WHERE id = $1", [row.id]);
+      }
     }
 
+    // 2. Создаём новую запись (is_active = false)
     const code = generateCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
@@ -171,6 +184,7 @@ app.post("/register/send-code", async (req, res) => {
       [userId, code, email, expiresAt]
     );
 
+    // 3. Отправка письма
     try {
       await transporter.sendMail({
         from: `"Библиотека" <${EMAIL_CONFIG.auth.user}>`,
@@ -851,9 +865,14 @@ app.get("/my-list-books", async (req, res) => {
         if (!userId) return res.status(400).json({ message: "Не указан ID пользователя" });
 
         let query = `
-            SELECT b.*, s.status, s.created_at as added_at
+            SELECT b.*, 
+                   COALESCE(AVG(br.rating), 0) as avg_rating,
+                   COUNT(br.id) as reviews_count,
+                   s.status, 
+                   s.created_at as added_at
             FROM user_book_statuses s
             JOIN books b ON s.book_id = b.id
+            LEFT JOIN book_reviews br ON b.id = br.book_id
             WHERE s.user_id = $1
         `;
         const params = [userId];
@@ -863,7 +882,7 @@ app.get("/my-list-books", async (req, res) => {
             params.push(status);
         }
 
-        query += ` ORDER BY s.created_at DESC`;
+        query += ` GROUP BY b.id, s.status, s.created_at ORDER BY s.created_at DESC`;
 
         const result = await pool.query(query, params);
         res.json(result.rows);
